@@ -53,7 +53,7 @@ class ReasonSegDataset(torch.utils.data.Dataset):
         self.short_question_list = SHORT_QUESTION_LIST
         self.long_question_list = LONG_QUESTION_LIST
         self.answer_list = ANSWER_LIST
-
+  
         reason_seg_data, splits = reason_seg_data.split("|")
         splits = splits.split("_")
         images = []
@@ -128,7 +128,7 @@ class ReasonSegDataset(torch.utils.data.Dataset):
         else:
             sampled_inds = list(range(len(sents)))
         sampled_sents = np.vectorize(sents.__getitem__)(sampled_inds).tolist()
-        sampled_masks = [
+        sampled_masks = [                                                    
             (mask == 1).astype(np.float32) for _ in range(len(sampled_inds))
         ]
 

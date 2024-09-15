@@ -66,11 +66,12 @@ def preprocess(
 def main(args):
     args = parse_args(args)
     os.makedirs(args.vis_save_path, exist_ok=True)
+    custom_cache_dir = "/mnt/data0/ziyue/cache/huggingface/hub" 
 
     # Create model
     tokenizer = AutoTokenizer.from_pretrained(
         args.version,
-        cache_dir=None,
+        cache_dir=custom_cache_dir,
         model_max_length=args.model_max_length,
         padding_side="right",
         use_fast=False,
@@ -112,7 +113,12 @@ def main(args):
         )
 
     model = LISAForCausalLM.from_pretrained(
-        args.version, low_cpu_mem_usage=True, vision_tower=args.vision_tower, seg_token_idx=args.seg_token_idx, **kwargs
+        args.version, 
+        cache_dir=custom_cache_dir,
+        low_cpu_mem_usage=True, 
+        vision_tower=args.vision_tower, 
+        seg_token_idx=args.seg_token_idx, 
+        **kwargs
     )
 
     model.config.eos_token_id = tokenizer.eos_token_id
@@ -142,11 +148,10 @@ def main(args):
         model.model.vision_tower = vision_tower.half().cuda()
     elif args.precision == "fp32":
         model = model.float().cuda()
-
+    
     vision_tower = model.get_model().get_vision_tower()
     vision_tower.to(device=args.local_rank)
-
-    clip_image_processor = CLIPImageProcessor.from_pretrained(model.config.vision_tower)
+    clip_image_processor = CLIPImageProcessor.from_pretrained(model.config.vision_tower,cache_dir=custom_cache_dir)
     transform = ResizeLongestSide(args.image_size)
 
     model.eval()

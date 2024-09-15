@@ -63,7 +63,7 @@ def parse_args(args):
     parser.add_argument("--log_base_dir", default="./runs", type=str)
     parser.add_argument("--exp_name", default="lisa", type=str)
     parser.add_argument("--epochs", default=10, type=int)
-    parser.add_argument("--steps_per_epoch", default=500, type=int)
+    parser.add_argument("--steps_per_epoch", default=100, type=int)
     parser.add_argument(
         "--batch_size", default=2, type=int, help="batch size per device per step"
     )
@@ -109,16 +109,16 @@ def parse_args(args):
 def main(args):
     args = parse_args(args)
     args.log_dir = os.path.join(args.log_base_dir, args.exp_name)
+    custom_cache_dir = "/mnt/data0/ziyue/cache/huggingface/hub" 
     if args.local_rank == 0:
         os.makedirs(args.log_dir, exist_ok=True)
         writer = SummaryWriter(args.log_dir)
     else:
         writer = None
-
     # Create model
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         args.version,
-        cache_dir=None,
+        cache_dir=custom_cache_dir,
         model_max_length=args.model_max_length,
         padding_side="right",
         use_fast=False,
@@ -149,7 +149,11 @@ def main(args):
     elif args.precision == "fp16":
         torch_dtype = torch.half
     model = LISAForCausalLM.from_pretrained(
-        args.version, torch_dtype=torch_dtype, low_cpu_mem_usage=True, **model_args
+        args.version,
+        cache_dir=custom_cache_dir, 
+        torch_dtype=torch_dtype, 
+        low_cpu_mem_usage=True, 
+        **model_args
     )
     model.config.eos_token_id = tokenizer.eos_token_id
     model.config.bos_token_id = tokenizer.bos_token_id
@@ -224,14 +228,14 @@ def main(args):
                 for x in ["lm_head", "embed_tokens", "mask_decoder", "text_hidden_fcs"]
             ]
         ):
-            print("n: ", n, "p.shape: ", p.shape)
+            # print("n: ", n, "p.shape: ", p.shape)
             p.requires_grad = True
 
     world_size = torch.cuda.device_count()
     args.distributed = world_size > 1
     train_dataset = HybridDataset(
         args.dataset_dir,
-        tokenizer,
+        tokenizer,  
         args.vision_tower,
         samples_per_epoch=args.batch_size
         * args.grad_accumulation_steps
