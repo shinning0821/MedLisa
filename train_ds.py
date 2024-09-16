@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from model.LISA import LISAForCausalLM
 from model.llava import conversation as conversation_lib
-from utils.dataset import HybridDataset, ValDataset, collate_fn
+from utils.dataset import HybridDataset, ValDataset, RadValDataset, collate_fn
 from utils.utils import (DEFAULT_IM_END_TOKEN, DEFAULT_IM_START_TOKEN,
                          AverageMeter, ProgressMeter, Summary, dict_to_cuda,
                          intersectionAndUnionGPU)
@@ -255,13 +255,22 @@ def main(args):
     )
 
     if args.no_eval == False:
-        val_dataset = ValDataset(
-            args.dataset_dir,
-            tokenizer,
-            args.vision_tower,
-            args.val_dataset,
-            args.image_size,
-        )
+        if args.dataset == "rad_seg":
+            val_dataset = RadValDataset(
+                args.dataset_dir,
+                tokenizer,
+                args.vision_tower,
+                args.val_dataset,
+                args.image_size,
+            )
+        else:
+            val_dataset = ValDataset(
+                args.dataset_dir,
+                tokenizer,
+                args.vision_tower,
+                args.val_dataset,
+                args.image_size,
+            )
         print(
             f"Training with {len(train_dataset)} examples and validating with {len(val_dataset)} examples."
         )

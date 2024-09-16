@@ -262,15 +262,16 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         if (pred_embeddings.shape[0]) != 6:
             warning = True
             print("warning!")
-            print(last_hidden_state.shape)
-            print(seg_token_mask.shape)
-            print(pred_embeddings.shape)
+            print(seg_token_offset.shape)
             pred_embeddings = pred_embeddings.repeat(2, 1)
-            print(pred_embeddings.shape)
 
         for i in range(len(seg_token_offset) - 1):
             start_i, end_i = seg_token_offset[i], seg_token_offset[i + 1]
+            end_i = start_i + 3
             pred_embeddings_.append(pred_embeddings[start_i:end_i])
+            if(warning):
+                print(start_i,end_i)
+                print(pred_embeddings.shape)
         pred_embeddings = pred_embeddings_
         multimask_output = False
         pred_masks = []
@@ -284,10 +285,6 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
                 masks=None,
                 text_embeds=pred_embeddings[i].unsqueeze(1),
             )
-            if(warning):
-                print(pred_embeddings[i].unsqueeze(1).shape)
-                print(sparse_embeddings.shape)
-                print(dense_embeddings.shape)
             sparse_embeddings = sparse_embeddings.to(pred_embeddings[i].dtype)
             low_res_masks, iou_predictions = self.model.visual_model.mask_decoder(
                 image_embeddings=image_embeddings[i].unsqueeze(0),

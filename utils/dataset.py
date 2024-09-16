@@ -17,7 +17,7 @@ from model.segment_anything.utils.transforms import ResizeLongestSide
 
 from .conversation import get_default_conv_template
 from .data_processing import get_mask_from_json
-from .rad_seg_dataset import RadSegDataset
+from .rad_seg_dataset import RadSegDataset, RadValDataset
 from .reason_seg_dataset import ReasonSegDataset
 from .refer import REFER
 from .refer_seg_dataset import ReferSegDataset
