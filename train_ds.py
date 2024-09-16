@@ -65,7 +65,7 @@ def parse_args(args):
     parser.add_argument("--epochs", default=10, type=int)
     parser.add_argument("--steps_per_epoch", default=100, type=int)
     parser.add_argument(
-        "--batch_size", default=2, type=int, help="batch size per device per step"
+        "--batch_size", default=16, type=int, help="batch size per device per step"
     )
     parser.add_argument(
         "--grad_accumulation_steps",
@@ -89,6 +89,7 @@ def parse_args(args):
     parser.add_argument("--no_eval", action="store_true", default=False)
     parser.add_argument("--eval_only", action="store_true", default=False)
     parser.add_argument("--vision_pretrained", default="PATH_TO_SAM_ViT-H", type=str)
+    parser.add_argument("--vision_image_size", default=512, type=int)
     parser.add_argument("--out_dim", default=256, type=int)
     parser.add_argument("--resume", default="", type=str)
     parser.add_argument("--print_freq", default=1, type=int)
@@ -140,6 +141,7 @@ def main(args):
         "bce_loss_weight": args.bce_loss_weight,
         "seg_token_idx": args.seg_token_idx,
         "vision_pretrained": args.vision_pretrained,
+        "vision_image_size": args.vision_image_size,
         "vision_tower": args.vision_tower,
         "use_mm_start_end": args.use_mm_start_end,
     }
@@ -167,7 +169,7 @@ def main(args):
     vision_tower.to(dtype=torch_dtype, device=args.local_rank)
     if not args.eval_only:
         model.get_model().initialize_lisa_modules(model.get_model().config)
-
+ 
     for p in vision_tower.parameters():
         p.requires_grad = False
     for p in model.get_model().mm_projector.parameters():
@@ -467,7 +469,6 @@ def train(
             else:
                 input_dict["images"] = input_dict["images"].float()
                 input_dict["images_clip"] = input_dict["images_clip"].float()
-
             output_dict = model(**input_dict)
 
             loss = output_dict["loss"]

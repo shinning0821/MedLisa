@@ -68,17 +68,18 @@ class LisaMetaModel:
         super(LisaMetaModel, self).__init__(config)
 
         self.config = config
+        self.vision_image_size = kwargs.get("vision_image_size", None)
+        self.vision_pretrained = kwargs.get("vision_pretrained", None)
+        
         if not hasattr(self.config, "train_mask_decoder"):
             self.config.train_mask_decoder = kwargs["train_mask_decoder"]
             self.config.out_dim = kwargs["out_dim"]
-            self.vision_pretrained = kwargs.get("vision_pretrained", None)
         else:
-            self.vision_pretrained = kwargs.get("vision_pretrained", None)
             self.initialize_lisa_modules(self.config)
 
     def initialize_lisa_modules(self, config):
         # SAM
-        self.visual_model = build_sam_vit_h(self.vision_pretrained)
+        self.visual_model = build_sam_vit_h(self.vision_pretrained,self.vision_image_size)
         for param in self.visual_model.parameters():
             param.requires_grad = False
         if config.train_mask_decoder:
@@ -180,7 +181,6 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         inference: bool = False,
         **kwargs,
     ):
-
         image_embeddings = self.get_visual_embs(images)
         batch_size = image_embeddings.shape[0]
         assert batch_size == len(offset) - 1
@@ -259,7 +259,7 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         pred_embeddings_ = []
         # 这个bug先放着
         warning = False
-        if (pred_embeddings.shape[0]) != 6:
+        if (pred_embeddings.shape[0]) != 3 * batch_size:
             warning = True
             print("warning!")
             print(seg_token_offset.shape)
@@ -270,7 +270,6 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
             end_i = start_i + 3
             pred_embeddings_.append(pred_embeddings[start_i:end_i])
             if(warning):
-                print(start_i,end_i)
                 print(pred_embeddings.shape)
         pred_embeddings = pred_embeddings_
         multimask_output = False

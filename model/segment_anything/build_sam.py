@@ -12,13 +12,14 @@ from .modeling import (ImageEncoderViT, MaskDecoder, PromptEncoder, Sam,
                        TwoWayTransformer)
 
 
-def build_sam_vit_h(checkpoint=None):
+def build_sam_vit_h(checkpoint=None, image_size=1024):
     return _build_sam(
         encoder_embed_dim=1280,
         encoder_depth=32,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[7, 15, 23, 31],
         checkpoint=checkpoint,
+        image_size=image_size,
     )
 
 
@@ -59,9 +60,10 @@ def _build_sam(
     encoder_num_heads,
     encoder_global_attn_indexes,
     checkpoint=None,
+    image_size = 1024,
 ):
     prompt_embed_dim = 256
-    image_size = 1024
+    image_size = image_size
     vit_patch_size = 16
     image_embedding_size = image_size // vit_patch_size
     sam = Sam(
@@ -104,5 +106,10 @@ def _build_sam(
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
-        sam.load_state_dict(state_dict, strict=False)
+        # sam.load_state_dict(state_dict, strict=False)
+        """
+        allow different input size, but need to retrain the position embedding
+        """
+        new_state_dict = {k: v for k, v in state_dict.items() if k in sam.state_dict() and sam.state_dict()[k].shape == v.shape}
+        sam.load_state_dict(new_state_dict, strict = False)
     return sam

@@ -23,7 +23,7 @@ from .utils import (ANSWER_LIST, DEFAULT_IMAGE_TOKEN,
 class RadSegDataset(torch.utils.data.Dataset):
     pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
     pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
-    img_size = 1024
+    img_size = 512
     ignore_label = 255
 
     def __init__(

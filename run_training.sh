@@ -11,6 +11,7 @@
 
 
 deepspeed --master_port=24999 --include=localhost:7 train_ds.py \
+  --version='liuhaotian/LLaVA-Lightning-7B-delta-v1-1' \
   --dataset_dir='/mnt/data0/ziyue/dataset/RadGenome-ChestCT' \
   --local_rank=0 \
   --vision_pretrained="/mnt/data0/ziyue/Medical-SAM-Adapter/checkpoint/sam/sam_vit_h_4b8939.pth" \
