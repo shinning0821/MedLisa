@@ -70,7 +70,8 @@ class LisaMetaModel:
         self.config = config
         self.vision_image_size = kwargs.get("vision_image_size", None)
         self.vision_pretrained = kwargs.get("vision_pretrained", None)
-        
+        self.thd_depth = kwargs.get("thd_depth", None)
+
         if not hasattr(self.config, "train_mask_decoder"):
             self.config.train_mask_decoder = kwargs["train_mask_decoder"]
             self.config.out_dim = kwargs["out_dim"]
@@ -181,8 +182,13 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         inference: bool = False,
         **kwargs,
     ):
+        thd_depth = self.model.thd_depth
         image_embeddings = self.get_visual_embs(images)
-        batch_size = image_embeddings.shape[0]
+
+        if thd_depth != 0:
+            batch_size = image_embeddings.shape[0] / thd_depth
+        else:
+            batch_size = image_embeddings.shape[0]
         assert batch_size == len(offset) - 1
 
         seg_token_mask = input_ids[:, 1:] == self.seg_token_idx
@@ -259,18 +265,21 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         pred_embeddings_ = []
         # 这个bug先放着
         warning = False
-        if (pred_embeddings.shape[0]) != 3 * batch_size:
+        if thd_depth:
+            pred_embeddings = pred_embeddings[0,...].unsqueeze(0)
+            pred_embeddings = pred_embeddings.repeat(thd_depth,1)
+        if thd_depth==0 and (pred_embeddings.shape[0]) != 3 * batch_size:
             warning = True
             print("warning!")
-            print(seg_token_offset.shape)
             pred_embeddings = pred_embeddings.repeat(2, 1)
 
         for i in range(len(seg_token_offset) - 1):
             start_i, end_i = seg_token_offset[i], seg_token_offset[i + 1]
-            end_i = start_i + 3
+            if thd_depth:
+                end_i = start_i + thd_depth
+            else:
+                end_i = start_i + 3
             pred_embeddings_.append(pred_embeddings[start_i:end_i])
-            if(warning):
-                print(pred_embeddings.shape)
         pred_embeddings = pred_embeddings_
         multimask_output = False
         pred_masks = []
@@ -318,7 +327,6 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         for batch_idx in range(len(pred_masks)):
             gt_mask = gt_masks[batch_idx]
             pred_mask = pred_masks[batch_idx]
-
             assert (
                 gt_mask.shape[0] == pred_mask.shape[0]
             ), "gt_mask.shape: {}, pred_mask.shape: {}".format(

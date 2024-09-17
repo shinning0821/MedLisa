@@ -52,9 +52,7 @@ class RadSegDataset(torch.utils.data.Dataset):
         self.image_size = image_size
         self.tokenizer = tokenizer
         self.precision = precision
-        self.transform = ResizeLongestSide(image_size)
         self.clip_image_processor = CLIPImageProcessor.from_pretrained(vision_tower)
-
 
         self.mode = mode
         self.region = region
@@ -96,7 +94,7 @@ class RadSegDataset(torch.utils.data.Dataset):
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""
         # Normalize colors
-        x = (x - self.pixel_mean) / self.pixel_std
+        # x = (x - self.pixel_mean) / self.pixel_std
 
         # Pad
         h, w = x.shape[-2:]
@@ -143,20 +141,25 @@ class RadSegDataset(torch.utils.data.Dataset):
             mask_path = mask_path.replace("anatomy", "region")
         mask = nib.load(os.path.join(mask_path,target_anatomy + '.nii.gz')).get_fdata()
         
-        image = image[:,:,:3]
-        mask = mask[:,:,:3]
+        image = torch.tensor(image).unsqueeze(0).unsqueeze(0)
+        mask = torch.tensor(mask).unsqueeze(0).unsqueeze(0)
+        image = F.interpolate(image, size=(self.img_size, self.img_size,64),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        mask = F.interpolate(mask, size=(self.img_size, self.img_size,64),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+
         image = (image - image.min()) / (image.max() - image.min() + 1e-5)
         mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-5)
         
+        image = image.numpy()
+        mask = mask.numpy()
+        image_clip = image[:,:,:3]
+
         ori_size = image.shape[:2]
         # preprocess image for clip
-        image_clip = self.clip_image_processor.preprocess(image, return_tensors="pt")[
+        image_clip = self.clip_image_processor.preprocess(image_clip, return_tensors="pt")[
             "pixel_values"
         ][0]
 
-        image = self.transform.apply_image(image)  # preprocess image for sam
         resize = image.shape[:2]
-
         image_name = image_path.split("/")[-1]
         questions = []
         answers = []

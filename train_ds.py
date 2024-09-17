@@ -63,15 +63,16 @@ def parse_args(args):
     parser.add_argument("--log_base_dir", default="./runs", type=str)
     parser.add_argument("--exp_name", default="lisa", type=str)
     parser.add_argument("--epochs", default=10, type=int)
-    parser.add_argument("--steps_per_epoch", default=100, type=int)
+    parser.add_argument("--steps_per_epoch", default=5, type=int)
     parser.add_argument(
-        "--batch_size", default=16, type=int, help="batch size per device per step"
+        "--batch_size", default=1, type=int, help="batch size per device per step"
     )
     parser.add_argument(
         "--grad_accumulation_steps",
         default=10,
         type=int,
     )
+    parser.add_argument("--thd_depth", default=0, type=int)    # enable 3d input
     parser.add_argument("--val_batch_size", default=1, type=int)
     parser.add_argument("--workers", default=4, type=int)
     parser.add_argument("--lr", default=0.0003, type=float)
@@ -143,6 +144,7 @@ def main(args):
         "vision_pretrained": args.vision_pretrained,
         "vision_image_size": args.vision_image_size,
         "vision_tower": args.vision_tower,
+        "thd_depth": args.thd_depth,
         "use_mm_start_end": args.use_mm_start_end,
     }
     torch_dtype = torch.float32
@@ -469,6 +471,10 @@ def train(
             else:
                 input_dict["images"] = input_dict["images"].float()
                 input_dict["images_clip"] = input_dict["images_clip"].float()
+
+            if args.thd_depth != 0:  # 3d input
+                input_dict["images"] = input_dict["images"].permute(1,0,2,3)
+                input_dict["images"] = input_dict["images"].repeat(1,3,1,1)
             output_dict = model(**input_dict)
 
             loss = output_dict["loss"]
