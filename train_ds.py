@@ -63,7 +63,7 @@ def parse_args(args):
     parser.add_argument("--log_base_dir", default="./runs", type=str)
     parser.add_argument("--exp_name", default="lisa", type=str)
     parser.add_argument("--epochs", default=10, type=int)
-    parser.add_argument("--steps_per_epoch", default=100, type=int)
+    parser.add_argument("--steps_per_epoch", default=30, type=int)
     parser.add_argument(
         "--batch_size", default=1, type=int, help="batch size per device per step"
     )

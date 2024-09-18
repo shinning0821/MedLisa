@@ -143,8 +143,8 @@ class RadSegDataset(torch.utils.data.Dataset):
         
         image = torch.tensor(image).unsqueeze(0).unsqueeze(0)
         mask = torch.tensor(mask).unsqueeze(0).unsqueeze(0)
-        image = F.interpolate(image, size=(self.img_size, self.img_size,64),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
-        mask = F.interpolate(mask, size=(self.img_size, self.img_size,64),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        image = F.interpolate(image, size=(self.img_size, self.img_size,16),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        mask = F.interpolate(mask, size=(self.img_size, self.img_size,16),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
 
         image = (image - image.min()) / (image.max() - image.min() + 1e-5)
         mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-5)
@@ -261,7 +261,7 @@ class RadValDataset(torch.utils.data.Dataset):
 
        
     def __len__(self):
-        return len(self.rad_seg_data[0])
+        return len(self.rad_seg_data[0]) 
 
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""
@@ -315,8 +315,8 @@ class RadValDataset(torch.utils.data.Dataset):
         
         image = torch.tensor(image).unsqueeze(0).unsqueeze(0)
         mask = torch.tensor(mask).unsqueeze(0).unsqueeze(0)
-        image = F.interpolate(image, size=(self.img_size, self.img_size,64),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
-        mask = F.interpolate(mask, size=(self.img_size, self.img_size,64),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        image = F.interpolate(image, size=(self.img_size, self.img_size,16),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        mask = F.interpolate(mask, size=(self.img_size, self.img_size,16),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
 
         image = (image - image.min()) / (image.max() - image.min() + 1e-5)
         mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-5)
