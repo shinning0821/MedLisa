@@ -63,7 +63,7 @@ def parse_args(args):
     parser.add_argument("--log_base_dir", default="./runs", type=str)
     parser.add_argument("--exp_name", default="lisa", type=str)
     parser.add_argument("--epochs", default=10, type=int)
-    parser.add_argument("--steps_per_epoch", default=5, type=int)
+    parser.add_argument("--steps_per_epoch", default=100, type=int)
     parser.add_argument(
         "--batch_size", default=1, type=int, help="batch size per device per step"
     )
@@ -561,6 +561,9 @@ def validate(val_loader, model_engine, epoch, writer, args):
             input_dict["images"] = input_dict["images"].float()
             input_dict["images_clip"] = input_dict["images_clip"].float()
 
+        if args.thd_depth != 0:  # 3d input
+            input_dict["images"] = input_dict["images"].permute(1,0,2,3)
+            input_dict["images"] = input_dict["images"].repeat(1,3,1,1)
         with torch.no_grad():
             output_dict = model_engine(**input_dict)
 

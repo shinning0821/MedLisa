@@ -205,7 +205,7 @@ class RadSegDataset(torch.utils.data.Dataset):
 class RadValDataset(torch.utils.data.Dataset):
     pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
     pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
-    img_size = 1024
+    img_size = 512
     ignore_label = 255
 
     def __init__(
@@ -214,7 +214,7 @@ class RadValDataset(torch.utils.data.Dataset):
         tokenizer,
         vision_tower,
         val_dataset,
-        image_size=1024,
+        image_size=224,
         rad_seg_data = 'dataset',
         mode = 'valid',
         region = 'abdomen'
@@ -225,7 +225,6 @@ class RadValDataset(torch.utils.data.Dataset):
         self.base_image_dir = base_image_dir
         self.image_size = image_size
         self.tokenizer = tokenizer
-        self.transform = ResizeLongestSide(image_size)
         self.clip_image_processor = CLIPImageProcessor.from_pretrained(vision_tower)
 
 
@@ -258,7 +257,7 @@ class RadValDataset(torch.utils.data.Dataset):
             
         self.rad_seg_data = (images, masks)
 
-        print("number of RadGenome_seg samples: ", len(images))
+        print("number of RadGenome_seg Test samples: ", len(images))
 
        
     def __len__(self):
@@ -267,7 +266,7 @@ class RadValDataset(torch.utils.data.Dataset):
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""
         # Normalize colors
-        x = (x - self.pixel_mean) / self.pixel_std
+        # x = (x - self.pixel_mean) / self.pixel_std
 
         # Pad
         h, w = x.shape[-2:]
@@ -314,20 +313,25 @@ class RadValDataset(torch.utils.data.Dataset):
             mask_path = mask_path.replace("anatomy", "region")
         mask = nib.load(os.path.join(mask_path,target_anatomy + '.nii.gz')).get_fdata()
         
-        image = image[:,:,:3]
-        mask = mask[:,:,:3]
+        image = torch.tensor(image).unsqueeze(0).unsqueeze(0)
+        mask = torch.tensor(mask).unsqueeze(0).unsqueeze(0)
+        image = F.interpolate(image, size=(self.img_size, self.img_size,64),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        mask = F.interpolate(mask, size=(self.img_size, self.img_size,64),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+
         image = (image - image.min()) / (image.max() - image.min() + 1e-5)
         mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-5)
         
+        image = image.numpy()
+        mask = mask.numpy()
+        image_clip = image[:,:,:3]
+        
         ori_size = image.shape[:2]
         # preprocess image for clip
-        image_clip = self.clip_image_processor.preprocess(image, return_tensors="pt")[
+        image_clip = self.clip_image_processor.preprocess(image_clip, return_tensors="pt")[
             "pixel_values"
         ][0]
 
-        image = self.transform.apply_image(image)  # preprocess image for sam
         resize = image.shape[:2]
-
         image_name = image_path.split("/")[-1]
         questions = []
         answers = []
