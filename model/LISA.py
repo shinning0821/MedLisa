@@ -267,10 +267,7 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         warning = False
         if thd_depth:
             if pred_embeddings.shape[0] == 0:
-                print(pred_embeddings.shape)
-                print(batch_size)
-                print(last_hidden_state.shape)
-                print(seg_token_mask.shape)
+                pred_embeddings = torch.zeros((1, *pred_embeddings.shape[1:])).bfloat16().cuda()
             pred_embeddings = pred_embeddings[0,...].unsqueeze(0)
             pred_embeddings = pred_embeddings.repeat(thd_depth,1)
         if thd_depth==0 and (pred_embeddings.shape[0]) != 3 * batch_size:

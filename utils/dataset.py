@@ -486,7 +486,7 @@ class ValDataset(torch.utils.data.Dataset):
         if self.data_type == "refer_seg":
             return len(self.refer_seg_ds["images"])
         else:
-            return len(self.images)
+            return len(self.images) 
 
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""

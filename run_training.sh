@@ -10,7 +10,7 @@
 
 
 
-deepspeed --master_port=25999 --include=localhost:6 train_ds.py \
+deepspeed --master_port=25999 --include=localhost:7 train_ds.py \
   --version='liuhaotian/LLaVA-Lightning-7B-delta-v1-1' \
   --dataset_dir='/mnt/data0/ziyue/dataset/RadGenome-ChestCT' \
   --local_rank=0 \

@@ -261,7 +261,7 @@ class RadValDataset(torch.utils.data.Dataset):
 
        
     def __len__(self):
-        return len(self.rad_seg_data[0]) 
+        return len(self.rad_seg_data[0])  // 5
 
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""
