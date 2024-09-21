@@ -23,7 +23,7 @@ from .utils import (ANSWER_LIST, DEFAULT_IMAGE_TOKEN,
 class RadSegDataset(torch.utils.data.Dataset):
     pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
     pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
-    img_size = 512
+    img_size = 1024
     ignore_label = 255
 
     def __init__(
@@ -34,6 +34,7 @@ class RadSegDataset(torch.utils.data.Dataset):
         samples_per_epoch=500 * 8 * 2 * 10,
         precision: str = "fp32",
         image_size: int = 224,
+        depth:int = 64,
         num_classes_per_sample: int = 3,
         exclude_val=False,
         rad_seg_data="dataset",
@@ -50,6 +51,8 @@ class RadSegDataset(torch.utils.data.Dataset):
 
         self.base_image_dir = base_image_dir
         self.image_size = image_size
+        self.depth = depth
+
         self.tokenizer = tokenizer
         self.precision = precision
         self.clip_image_processor = CLIPImageProcessor.from_pretrained(vision_tower)
@@ -143,8 +146,8 @@ class RadSegDataset(torch.utils.data.Dataset):
         
         image = torch.tensor(image).unsqueeze(0).unsqueeze(0)
         mask = torch.tensor(mask).unsqueeze(0).unsqueeze(0)
-        image = F.interpolate(image, size=(self.img_size, self.img_size,16),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
-        mask = F.interpolate(mask, size=(self.img_size, self.img_size,16),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        image = F.interpolate(image, size=(self.img_size, self.img_size,self.depth),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        mask = F.interpolate(mask, size=(self.img_size, self.img_size,self.depth),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
 
         image = (image - image.min()) / (image.max() - image.min() + 1e-5)
         mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-5)
@@ -205,7 +208,7 @@ class RadSegDataset(torch.utils.data.Dataset):
 class RadValDataset(torch.utils.data.Dataset):
     pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
     pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
-    img_size = 512
+    img_size = 1024
     ignore_label = 255
 
     def __init__(
@@ -215,6 +218,7 @@ class RadValDataset(torch.utils.data.Dataset):
         vision_tower,
         val_dataset,
         image_size=224,
+        depth = 64,
         rad_seg_data = 'dataset',
         mode = 'valid',
         region = 'abdomen'
@@ -224,6 +228,8 @@ class RadValDataset(torch.utils.data.Dataset):
          
         self.base_image_dir = base_image_dir
         self.image_size = image_size
+        self.depth = depth
+
         self.tokenizer = tokenizer
         self.clip_image_processor = CLIPImageProcessor.from_pretrained(vision_tower)
 
@@ -261,7 +267,7 @@ class RadValDataset(torch.utils.data.Dataset):
 
        
     def __len__(self):
-        return len(self.rad_seg_data[0])  // 5
+        return len(self.rad_seg_data[0])  // 10
 
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""
@@ -315,8 +321,8 @@ class RadValDataset(torch.utils.data.Dataset):
         
         image = torch.tensor(image).unsqueeze(0).unsqueeze(0)
         mask = torch.tensor(mask).unsqueeze(0).unsqueeze(0)
-        image = F.interpolate(image, size=(self.img_size, self.img_size,16),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
-        mask = F.interpolate(mask, size=(self.img_size, self.img_size,16),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        image = F.interpolate(image, size=(self.img_size, self.img_size,self.depth),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        mask = F.interpolate(mask, size=(self.img_size, self.img_size,self.depth),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
 
         image = (image - image.min()) / (image.max() - image.min() + 1e-5)
         mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-5)

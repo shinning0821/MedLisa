@@ -63,7 +63,7 @@ def parse_args(args):
     parser.add_argument("--log_base_dir", default="./runs", type=str)
     parser.add_argument("--exp_name", default="lisa", type=str)
     parser.add_argument("--epochs", default=10, type=int)
-    parser.add_argument("--steps_per_epoch", default=30, type=int)
+    parser.add_argument("--steps_per_epoch", default=1, type=int)
     parser.add_argument(
         "--batch_size", default=1, type=int, help="batch size per device per step"
     )
@@ -90,7 +90,7 @@ def parse_args(args):
     parser.add_argument("--no_eval", action="store_true", default=False)
     parser.add_argument("--eval_only", action="store_true", default=False)
     parser.add_argument("--vision_pretrained", default="PATH_TO_SAM_ViT-H", type=str)
-    parser.add_argument("--vision_image_size", default=512, type=int)
+    parser.add_argument("--vision_image_size", default=1024, type=int)
     parser.add_argument("--out_dim", default=256, type=int)
     parser.add_argument("--resume", default="", type=str)
     parser.add_argument("--print_freq", default=1, type=int)
@@ -247,6 +247,7 @@ def main(args):
         * world_size,
         precision=args.precision,
         image_size=args.image_size,
+        depth = args.thd_depth,
         num_classes_per_sample=args.num_classes_per_sample,
         exclude_val=args.exclude_val,
         dataset=args.dataset,
@@ -266,6 +267,7 @@ def main(args):
                 args.vision_tower,
                 args.val_dataset,
                 args.image_size,
+                args.thd_depth,
             )
         else:
             val_dataset = ValDataset(
