@@ -33,6 +33,7 @@ class ImageEncoderViT(nn.Module):
         rel_pos_zero_init: bool = True,
         window_size: int = 0,
         global_attn_indexes: Tuple[int, ...] = (),
+        use_adapter: bool=False,
     ) -> None:
         """
         Args:
@@ -75,18 +76,33 @@ class ImageEncoderViT(nn.Module):
 
         self.blocks = nn.ModuleList()
         for i in range(depth):
-            block = Block(
-                dim=embed_dim,
-                num_heads=num_heads,
-                mlp_ratio=mlp_ratio,
-                qkv_bias=qkv_bias,
-                norm_layer=norm_layer,
-                act_layer=act_layer,
-                use_rel_pos=use_rel_pos,
-                rel_pos_zero_init=rel_pos_zero_init,
-                window_size=window_size if i not in global_attn_indexes else 0,
-                input_size=(img_size // patch_size, img_size // patch_size),
-            )
+            if use_adapter == True:
+                block = AdapterBlock(
+                    dim=embed_dim,
+                    num_heads=num_heads,
+                    mlp_ratio=mlp_ratio,
+                    qkv_bias=qkv_bias,
+                    norm_layer=norm_layer,
+                    act_layer=act_layer,
+                    use_rel_pos=use_rel_pos,
+                    rel_pos_zero_init=rel_pos_zero_init,
+                    window_size=window_size if i not in global_attn_indexes else 0,
+                    input_size=(img_size // patch_size, img_size // patch_size),
+                )
+            else:
+                block = Block(
+                    dim=embed_dim,
+                    num_heads=num_heads,
+                    mlp_ratio=mlp_ratio,
+                    qkv_bias=qkv_bias,
+                    norm_layer=norm_layer,
+                    act_layer=act_layer,
+                    use_rel_pos=use_rel_pos,
+                    rel_pos_zero_init=rel_pos_zero_init,
+                    window_size=window_size if i not in global_attn_indexes else 0,
+                    input_size=(img_size // patch_size, img_size // patch_size),
+                )
+
             self.blocks.append(block)
 
         self.neck = nn.Sequential(

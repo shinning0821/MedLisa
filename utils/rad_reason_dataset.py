@@ -20,7 +20,7 @@ from .utils import (ANSWER_LIST, DEFAULT_IMAGE_TOKEN,
                     SHORT_QUESTION_LIST)
 
 
-class RadSegDataset(torch.utils.data.Dataset):
+class RadReasonDataset(torch.utils.data.Dataset):
     pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
     pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
     img_size = 1024
@@ -40,7 +40,7 @@ class RadSegDataset(torch.utils.data.Dataset):
         rad_seg_data="dataset",
         explanatory=0.1,
         mode = 'train', 
-        region = 'abdomen'
+        region = 'lung'
     ):
         self.exclude_val = exclude_val
         self.rad_seg_data = rad_seg_data
@@ -144,53 +144,69 @@ class RadSegDataset(torch.utils.data.Dataset):
             mask_path = mask_path.replace("anatomy", "region")
         mask = nib.load(os.path.join(mask_path,target_anatomy + '.nii.gz')).get_fdata()
         
-        image = torch.tensor(image).unsqueeze(0).unsqueeze(0)
-        mask = torch.tensor(mask).unsqueeze(0).unsqueeze(0)
+        image = torch.tensor(image)
+        mask = torch.tensor(mask)
+        
+        image = image.unsqueeze(0).unsqueeze(0)
+        mask = mask.unsqueeze(0).unsqueeze(0)
+        
         image = F.interpolate(image, size=(self.img_size, self.img_size,self.depth),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
-        mask = F.interpolate(mask, size=(self.img_size, self.img_size,self.depth),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        mask = F.interpolate(mask, size=(self.img_size, self.img_size, self.depth), mode='nearest').squeeze(0).squeeze(0)
 
         image = (image - image.min()) / (image.max() - image.min() + 1e-5)
         mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-5)
         
+        for i in range(image.shape[-1]):
+            if torch.sum(mask[..., i]) > 0:
+                mask = mask[..., i:]
+                image = image[...,i:]
+                break
+        for j in reversed(range(image.shape[-1])):
+            if torch.sum(mask[..., j]) > 0:
+                mask = mask[..., :j+1]
+                image = image[...,:j+1]
+                break
+
         image = image.numpy()
         mask = mask.numpy()
-        image_clip = image[:,:,:3]
 
-        ori_size = image.shape[:2]
         # preprocess image for clip
-        image_clip = self.clip_image_processor.preprocess(image_clip, return_tensors="pt")[
-            "pixel_values"
-        ][0]
+        # image_clip = self.clip_image_processor.preprocess(image_clip, return_tensors="pt")[
+        #         "pixel_values"
+        #     ][0]
+        image_clip = []
+        for i in range(image.shape[-1]):
+            slice_image = np.stack((image[:,:,i], image[:,:,i], image[:,:,i]), axis=-1)
+            image_clip.append(self.clip_image_processor.preprocess(slice_image, return_tensors="pt")[
+                "pixel_values"
+            ][0])
+        image_clip = torch.stack(image_clip)
 
         resize = image.shape[:2]
         image_name = image_path.split("/")[-1]
+
         questions = []
         answers = []
-        
         questions.append(ques)
-        questions.append(ques)
-        questions.append(ques)
-
-        answers.append(random.choice(self.answer_list))
-        answers.append(random.choice(self.answer_list))
         answers.append(random.choice(self.answer_list))
 
         conversations = []
         conv = conversation_lib.default_conversation.copy()
         roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
 
-        i = 0
-        while i < len(questions):
-            conv.messages = []
-            conv.append_message(conv.roles[0], questions[i])
-            conv.append_message(conv.roles[1], answers[i])
-            conversations.append(conv.get_prompt())
-            i += 1
+        for _ in range(image.shape[-1]):
+            i = 0
+            while i < len(questions):
+                conv.messages = []
+                conv.append_message(conv.roles[0], questions[i])
+                conv.append_message(conv.roles[1], answers[i])
+                conversations.append(conv.get_prompt())
+                i += 1
 
         image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
 
         image_name = image_path.split("/")[-1]
-        mask = torch.from_numpy(mask).permute(2, 0, 1)
+        mask = torch.from_numpy(mask).permute(2, 0, 1).round().int()
         label = torch.ones(mask.shape[1], mask.shape[2]) * self.ignore_label
 
         return (
@@ -205,7 +221,7 @@ class RadSegDataset(torch.utils.data.Dataset):
             sample_classes,
         )
 
-class RadValDataset(torch.utils.data.Dataset):
+class RadReasonValDataset(torch.utils.data.Dataset):
     pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
     pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
     img_size = 1024
@@ -221,7 +237,7 @@ class RadValDataset(torch.utils.data.Dataset):
         depth = 64,
         rad_seg_data = 'dataset',
         mode = 'valid',
-        region = 'abdomen'
+        region = 'lung'
     ):
         self.base_image_dir = base_image_dir
         self.rad_seg_data = rad_seg_data
@@ -239,7 +255,7 @@ class RadValDataset(torch.utils.data.Dataset):
         self.short_question_list = SHORT_QUESTION_LIST
         self.long_question_list = LONG_QUESTION_LIST
         self.answer_list = ANSWER_LIST
-         
+
         self.img_dir = mode + "_preprocessed"
         self.mask_dir = mode + "_anatomy_mask"
         
@@ -267,7 +283,7 @@ class RadValDataset(torch.utils.data.Dataset):
 
        
     def __len__(self):
-        return len(self.rad_seg_data[0])  // 10
+        return len(self.rad_seg_data[0])  // 50
 
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""
@@ -319,23 +335,46 @@ class RadValDataset(torch.utils.data.Dataset):
             mask_path = mask_path.replace("anatomy", "region")
         mask = nib.load(os.path.join(mask_path,target_anatomy + '.nii.gz')).get_fdata()
         
-        image = torch.tensor(image).unsqueeze(0).unsqueeze(0)
-        mask = torch.tensor(mask).unsqueeze(0).unsqueeze(0)
+        image = torch.tensor(image)
+        mask = torch.tensor(mask)
+        
+        image = image.unsqueeze(0).unsqueeze(0)
+        mask = mask.unsqueeze(0).unsqueeze(0)
+
         image = F.interpolate(image, size=(self.img_size, self.img_size,self.depth),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
-        mask = F.interpolate(mask, size=(self.img_size, self.img_size,self.depth),mode='trilinear', align_corners=False).squeeze(0).squeeze(0)
+        mask = F.interpolate(mask, size=(self.img_size, self.img_size, self.depth), mode='nearest').squeeze(0).squeeze(0)
 
         image = (image - image.min()) / (image.max() - image.min() + 1e-5)
         mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-5)
+        # image_clip = (image_clip - image_clip.min()) / (image_clip.max() - image_clip.min() + 1e-5)
         
+        for i in range(image.shape[-1]):
+            if torch.sum(mask[..., i]) > 0:
+                mask = mask[..., i:]
+                image = image[...,i:]
+                break
+        for j in reversed(range(image.shape[-1])):
+            if torch.sum(mask[..., j]) > 0:
+                mask = mask[..., :j+1]
+                image = image[...,:j+1]
+                break
+
         image = image.numpy()
         mask = mask.numpy()
-        image_clip = image[:,:,:3]
+        # image_clip = image_clip.numpy()
         
         ori_size = image.shape[:2]
         # preprocess image for clip
-        image_clip = self.clip_image_processor.preprocess(image_clip, return_tensors="pt")[
-            "pixel_values"
-        ][0]
+        # image_clip = self.clip_image_processor.preprocess(image_clip, return_tensors="pt")[
+        #         "pixel_values"
+        #     ][0]
+        image_clip = []
+        for i in range(image.shape[-1]):
+            slice_image = np.stack((image[:,:,i], image[:,:,i], image[:,:,i]), axis=-1)
+            image_clip.append(self.clip_image_processor.preprocess(slice_image, return_tensors="pt")[
+                "pixel_values"
+            ][0])
+        image_clip = torch.stack(image_clip)
 
         resize = image.shape[:2]
         image_name = image_path.split("/")[-1]
@@ -365,7 +404,7 @@ class RadValDataset(torch.utils.data.Dataset):
         image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
 
         image_name = image_path.split("/")[-1]
-        mask = torch.from_numpy(mask).permute(2, 0, 1)
+        mask = torch.from_numpy(mask).permute(2, 0, 1).round().int()
         labels = torch.ones(mask.shape[1], mask.shape[2]) * self.ignore_label
         inference = True
 

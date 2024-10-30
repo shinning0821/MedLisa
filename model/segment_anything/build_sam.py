@@ -12,7 +12,7 @@ from .modeling import (ImageEncoderViT, MaskDecoder, PromptEncoder, Sam,
                        TwoWayTransformer)
 
 
-def build_sam_vit_h(checkpoint=None, image_size=1024):
+def build_sam_vit_h(checkpoint=None, image_size=1024, use_adapter =False):
     return _build_sam(
         encoder_embed_dim=1280,
         encoder_depth=32,
@@ -20,6 +20,7 @@ def build_sam_vit_h(checkpoint=None, image_size=1024):
         encoder_global_attn_indexes=[7, 15, 23, 31],
         checkpoint=checkpoint,
         image_size=image_size,
+        use_adapter=use_adapter,
     )
 
 
@@ -61,6 +62,7 @@ def _build_sam(
     encoder_global_attn_indexes,
     checkpoint=None,
     image_size = 1024,
+    use_adapter = False
 ):
     prompt_embed_dim = 256
     image_size = image_size
@@ -80,6 +82,7 @@ def _build_sam(
             global_attn_indexes=encoder_global_attn_indexes,
             window_size=14,
             out_chans=prompt_embed_dim,
+            use_adapter = use_adapter,
         ),
         prompt_encoder=PromptEncoder(
             embed_dim=prompt_embed_dim,
@@ -107,9 +110,11 @@ def _build_sam(
         with open(checkpoint, "rb") as f:
             state_dict = torch.load(f)
         # sam.load_state_dict(state_dict, strict=False)
+        new_state_dict = {k: v for k, v in state_dict.items() if k in sam.state_dict() and sam.state_dict()[k].shape == v.shape}
+        sam.load_state_dict(new_state_dict, strict = False)
         """
         allow different input size, but need to retrain the position embedding
         """
-        new_state_dict = {k: v for k, v in state_dict.items() if k in sam.state_dict() and sam.state_dict()[k].shape == v.shape}
-        sam.load_state_dict(new_state_dict, strict = False)
+        # new_state_dict = {k: v for k, v in state_dict.items() if k in sam.state_dict() and sam.state_dict()[k].shape == v.shape}
+        # sam.load_state_dict(new_state_dict, strict = False)
     return sam

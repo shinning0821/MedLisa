@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModel
 
-
 class CLIPVisionTower(nn.Module):
     def __init__(self, vision_tower, args, delay_load=False):
         super().__init__()

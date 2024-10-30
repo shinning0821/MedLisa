@@ -68,8 +68,9 @@ class LisaMetaModel:
         super(LisaMetaModel, self).__init__(config)
 
         self.config = config
-        self.vision_image_size = kwargs.get("vision_image_size", None)
+        self.vision_image_size = kwargs.get("vision_image_size", 1024)
         self.vision_pretrained = kwargs.get("vision_pretrained", None)
+        self.use_adapter = kwargs.get("use_adapter", False)
         self.thd_depth = kwargs.get("thd_depth", None)
 
         if not hasattr(self.config, "train_mask_decoder"):
@@ -80,7 +81,7 @@ class LisaMetaModel:
 
     def initialize_lisa_modules(self, config):
         # SAM
-        self.visual_model = build_sam_vit_h(self.vision_pretrained,self.vision_image_size)
+        self.visual_model = build_sam_vit_h(self.vision_pretrained,self.vision_image_size,self.use_adapter)
         for param in self.visual_model.parameters():
             param.requires_grad = False
         if config.train_mask_decoder:
@@ -128,7 +129,8 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         config,
         **kwargs,
     ):
-        if not hasattr(config, "train_mask_decoder"):
+        # change for loading existing checkpoint
+        if  not hasattr(config, "train_mask_decoder"):
             config.mm_use_im_start_end = kwargs.pop("use_mm_start_end", True)
             config.mm_vision_tower = kwargs.get(
                 "vision_tower", "openai/clip-vit-large-patch14"
@@ -137,8 +139,11 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
             self.dice_loss_weight = kwargs.pop("dice_loss_weight", None)
             self.bce_loss_weight = kwargs.pop("bce_loss_weight", None)
         else:
+            config.mm_use_im_start_end = kwargs.pop("use_mm_start_end", True)
+            self.ce_loss_weight = kwargs.pop("ce_loss_weight", None)
+            self.dice_loss_weight = kwargs.pop("dice_loss_weight", None)
+            self.bce_loss_weight = kwargs.pop("bce_loss_weight", None)
             config.mm_vision_tower = config.vision_tower
-            
         self.seg_token_idx = kwargs.pop("seg_token_idx")
 
         super().__init__(config)
@@ -181,12 +186,12 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         resize_list: List[tuple],
         inference: bool = False,
         **kwargs,
-    ):
+    ):      
         thd_depth = self.model.thd_depth
         image_embeddings = self.get_visual_embs(images)
 
         if thd_depth != 0:
-            batch_size = image_embeddings.shape[0] / thd_depth
+            batch_size = 1 #image_embeddings.shape[0] / thd_depth
         else:
             batch_size = image_embeddings.shape[0]
         assert batch_size == len(offset) - 1
@@ -207,8 +212,11 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         if inference:
             n_batch = 1
             length = input_ids.shape[0]
-            assert images_clip.shape[0] == 1
-            images_clip_extend = images_clip.expand(length, -1, -1, -1).contiguous()
+            # assert images_clip.shape[0] == 1
+            if(images_clip.shape[0]==1):
+                images_clip_extend = images_clip.expand(length, -1, -1, -1).contiguous()
+            else:
+                images_clip_extend = images_clip
 
             output_hidden_states = []
             for i in range(n_batch):
@@ -227,7 +235,7 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
             output_hidden_states_list.append(output_hidden_states_level)
             output_hidden_states = output_hidden_states_list
             output = None
-
+            
         else:
             images_clip_list = []
             for i in range(len(offset) - 1):
@@ -241,6 +249,7 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
                 images_clip_list.append(images_clip_i)
             images_clip = torch.cat(images_clip_list, dim=0)
             # multi-model(llava output)
+
             output = super().forward(
                 images=images_clip,
                 attention_mask=attention_masks,
@@ -264,27 +273,25 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         seg_token_offset = seg_token_offset[offset]
         pred_embeddings_ = []
         # 这个bug先放着
-        warning = False
-        if thd_depth:
+        if thd_depth != 0:
             if pred_embeddings.shape[0] == 0:
                 pred_embeddings = torch.zeros((1, *pred_embeddings.shape[1:])).bfloat16().cuda()
             pred_embeddings = pred_embeddings[0,...].unsqueeze(0)
-            pred_embeddings = pred_embeddings.repeat(thd_depth,1)
-        if thd_depth==0 and (pred_embeddings.shape[0]) != 3 * batch_size:
-            warning = True
-            print("warning!")
-            pred_embeddings = pred_embeddings.repeat(2, 1)
+            pred_embeddings = pred_embeddings.repeat(image_embeddings.shape[0],1)
 
         for i in range(len(seg_token_offset) - 1):
             start_i, end_i = seg_token_offset[i], seg_token_offset[i + 1]
-            if thd_depth:
-                end_i = start_i + thd_depth
-            else:
-                end_i = start_i + 3
+            if thd_depth != 0:
+                end_i = start_i + image_embeddings.shape[0]
             pred_embeddings_.append(pred_embeddings[start_i:end_i])
         pred_embeddings = pred_embeddings_
         multimask_output = False
         pred_masks = []
+        
+        if thd_depth:
+            pred_embeddings = torch.split(pred_embeddings[0], 1)
+            pred_embeddings = [p for p in pred_embeddings]
+
         for i in range(len(pred_embeddings)):
             (
                 sparse_embeddings,
@@ -296,6 +303,7 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
                 text_embeds=pred_embeddings[i].unsqueeze(1),
             )
             sparse_embeddings = sparse_embeddings.to(pred_embeddings[i].dtype)
+            
             low_res_masks, iou_predictions = self.model.visual_model.mask_decoder(
                 image_embeddings=image_embeddings[i].unsqueeze(0),
                 image_pe=self.model.visual_model.prompt_encoder.get_dense_pe(),
@@ -303,7 +311,14 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
                 dense_prompt_embeddings=dense_embeddings,
                 multimask_output=multimask_output,
             )
-            pred_mask = self.model.visual_model.postprocess_masks(
+            if thd_depth:
+                pred_mask = self.model.visual_model.postprocess_masks(
+                low_res_masks,
+                input_size=resize_list[0],
+                original_size=label_list[0].shape,
+            )
+            else:
+                pred_mask = self.model.visual_model.postprocess_masks(
                 low_res_masks,
                 input_size=resize_list[i],
                 original_size=label_list[i].shape,
@@ -312,6 +327,11 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
 
         model_output = output
         gt_masks = masks_list
+
+        if thd_depth:
+            pred_masks_ = []
+            pred_masks_.append(torch.stack(pred_masks).squeeze(1))
+            pred_masks = pred_masks_
 
         if inference:
             return {

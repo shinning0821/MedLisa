@@ -37,6 +37,7 @@ def parse_args(args):
     parser.add_argument("--load_in_8bit", action="store_true", default=False)
     parser.add_argument("--load_in_4bit", action="store_true", default=False)
     parser.add_argument("--use_mm_start_end", action="store_true", default=True)
+    parser.add_argument("--vision_image_size", default=1024, type=int)
     parser.add_argument(
         "--conv_type",
         default="llava_v1",
@@ -86,7 +87,10 @@ def main(args):
     elif args.precision == "fp16":
         torch_dtype = torch.half
 
-    kwargs = {"torch_dtype": torch_dtype}
+    kwargs = {
+        "torch_dtype": torch_dtype,
+        "vision_image_size": args.vision_image_size,
+    }
     if args.load_in_4bit:
         kwargs.update(
             {
@@ -111,7 +115,6 @@ def main(args):
                 ),
             }
         )
-
     model = LISAForCausalLM.from_pretrained(
         args.version, 
         cache_dir=custom_cache_dir,

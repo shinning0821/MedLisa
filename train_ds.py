@@ -15,11 +15,12 @@ from torch.utils.tensorboard import SummaryWriter
 
 from model.LISA import LISAForCausalLM
 from model.llava import conversation as conversation_lib
-from utils.dataset import HybridDataset, ValDataset, RadValDataset, collate_fn
+from utils.dataset import HybridDataset, ValDataset, RadReasonValDataset, RadSemValDataset, collate_fn
 from utils.utils import (DEFAULT_IM_END_TOKEN, DEFAULT_IM_START_TOKEN,
                          AverageMeter, ProgressMeter, Summary, dict_to_cuda,
                          intersectionAndUnionGPU)
-
+import warnings
+warnings.filterwarnings("ignore")
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description="LISA Model Training")
@@ -62,8 +63,8 @@ def parse_args(args):
     parser.add_argument("--dataset_dir", default="./dataset", type=str)
     parser.add_argument("--log_base_dir", default="./runs", type=str)
     parser.add_argument("--exp_name", default="lisa", type=str)
-    parser.add_argument("--epochs", default=10, type=int)
-    parser.add_argument("--steps_per_epoch", default=1, type=int)
+    parser.add_argument("--epochs", default=100, type=int)
+    parser.add_argument("--steps_per_epoch", default=250, type=int)
     parser.add_argument(
         "--batch_size", default=1, type=int, help="batch size per device per step"
     )
@@ -73,12 +74,13 @@ def parse_args(args):
         type=int,
     )
     parser.add_argument("--thd_depth", default=0, type=int)    # enable 3d input
+    parser.add_argument("--use_adapter", default=False, type=bool)    # enable adapter
     parser.add_argument("--val_batch_size", default=1, type=int)
     parser.add_argument("--workers", default=4, type=int)
-    parser.add_argument("--lr", default=0.0003, type=float)
-    parser.add_argument("--ce_loss_weight", default=1.0, type=float)
+    parser.add_argument("--lr", default=0.0001, type=float)
+    parser.add_argument("--ce_loss_weight", default=1, type=float)
     parser.add_argument("--dice_loss_weight", default=0.5, type=float)
-    parser.add_argument("--bce_loss_weight", default=2.0, type=float)
+    parser.add_argument("--bce_loss_weight", default=1, type=float)
     parser.add_argument("--lora_alpha", default=16, type=int)
     parser.add_argument("--lora_dropout", default=0.05, type=float)
     parser.add_argument("--lora_target_modules", default="q_proj,v_proj", type=str)
@@ -145,6 +147,7 @@ def main(args):
         "vision_image_size": args.vision_image_size,
         "vision_tower": args.vision_tower,
         "thd_depth": args.thd_depth,
+        "use_adapter": args.use_adapter,
         "use_mm_start_end": args.use_mm_start_end,
     }
     torch_dtype = torch.float32
@@ -159,6 +162,7 @@ def main(args):
         low_cpu_mem_usage=True, 
         **model_args
     )
+
     model.config.eos_token_id = tokenizer.eos_token_id
     model.config.bos_token_id = tokenizer.bos_token_id
     model.config.pad_token_id = tokenizer.pad_token_id
@@ -169,8 +173,8 @@ def main(args):
     model.get_model().initialize_vision_modules(model.get_model().config)
     vision_tower = model.get_model().get_vision_tower()
     vision_tower.to(dtype=torch_dtype, device=args.local_rank)
-    if not args.eval_only:
-        model.get_model().initialize_lisa_modules(model.get_model().config)
+    # if not args.eval_only:
+    model.get_model().initialize_lisa_modules(model.get_model().config)
  
     for p in vision_tower.parameters():
         p.requires_grad = False
@@ -194,7 +198,7 @@ def main(args):
                         [
                             x not in name
                             for x in [
-                                "visual_model",
+                                "mask_decoder",
                                 "vision_tower",
                                 "mm_projector",
                                 "text_hidden_fcs",
@@ -229,10 +233,12 @@ def main(args):
         if any(
             [
                 x in n
-                for x in ["lm_head", "embed_tokens", "mask_decoder", "text_hidden_fcs"]
+                for x in ["lm_head", "embed_tokens", "mask_decoder", "text_hidden_fcs","mm_projector","vision_tower"]
             ]
         ):
             # print("n: ", n, "p.shape: ", p.shape)
+            p.requires_grad = True
+        elif "Adapter" in n:
             p.requires_grad = True
 
     world_size = torch.cuda.device_count()
@@ -260,8 +266,17 @@ def main(args):
     )
 
     if args.no_eval == False:
-        if args.dataset == "rad_seg":
-            val_dataset = RadValDataset(
+        if args.dataset == "rad_sem":
+            val_dataset = RadSemValDataset(
+                args.dataset_dir,
+                tokenizer,
+                args.vision_tower,
+                args.val_dataset,
+                args.image_size,
+                args.thd_depth,
+            )
+        elif args.dataset == "rad_reason":
+            val_dataset = RadReasonValDataset(
                 args.dataset_dir,
                 tokenizer,
                 args.vision_tower,
@@ -417,6 +432,7 @@ def main(args):
                     shutil.rmtree(save_dir)
             torch.distributed.barrier()
             model_engine.save_checkpoint(save_dir)
+        writer.close()
 
 
 def train(
@@ -427,7 +443,7 @@ def train(
     writer,
     train_iter,
     args,
-):
+):  
     """Main training loop."""
     batch_time = AverageMeter("Time", ":6.3f")
     data_time = AverageMeter("Data", ":6.3f")
@@ -451,6 +467,9 @@ def train(
     )
 
     # switch to train mode
+    # for n, p in model.named_parameters():
+    #     if(p.requires_grad == True):
+    #         print("n: ", n, "p.shape: ", p.shape)
     model.train()
     end = time.time()
     for global_step in range(args.steps_per_epoch):
@@ -477,8 +496,14 @@ def train(
             if args.thd_depth != 0:  # 3d input
                 input_dict["images"] = input_dict["images"].permute(1,0,2,3)
                 input_dict["images"] = input_dict["images"].repeat(1,3,1,1)
-            output_dict = model(**input_dict)
+                input_dict["images_clip"] = input_dict["images_clip"].squeeze(0)
 
+                # print(input_dict['images'].shape)
+                # print(input_dict['labels'].shape)
+                # print(len(input_dict["masks_list"]))
+                # print(input_dict["masks_list"][0].shape)
+
+            output_dict = model(**input_dict)
             loss = output_dict["loss"]
             ce_loss = output_dict["ce_loss"]
             mask_bce_loss = output_dict["mask_bce_loss"]
@@ -552,6 +577,12 @@ def validate(val_loader, model_engine, epoch, writer, args):
     for input_dict in tqdm.tqdm(val_loader):
         torch.cuda.empty_cache()
 
+        import cv2
+        save_img = input_dict["images"].clone().squeeze(0).detach().cpu().numpy()
+        for i in range(input_dict["images"].shape[1]):
+            cv2.imwrite('vis_output/rad_output/image{}.png'.format(i), save_img[i,:,:]*255)
+
+
         input_dict = dict_to_cuda(input_dict)
         if args.precision == "fp16":
             input_dict["images"] = input_dict["images"].half()
@@ -566,6 +597,7 @@ def validate(val_loader, model_engine, epoch, writer, args):
         if args.thd_depth != 0:  # 3d input
             input_dict["images"] = input_dict["images"].permute(1,0,2,3)
             input_dict["images"] = input_dict["images"].repeat(1,3,1,1)
+            input_dict["images_clip"] = input_dict["images_clip"].squeeze(0)
         with torch.no_grad():
             output_dict = model_engine(**input_dict)
 
@@ -575,7 +607,11 @@ def validate(val_loader, model_engine, epoch, writer, args):
         assert len(pred_masks) == 1
 
         intersection, union, acc_iou = 0.0, 0.0, 0.0
+
+        idx=0
         for mask_i, output_i in zip(masks_list, output_list):
+            cv2.imwrite('vis_output/rad_output/mask{}.png'.format(idx), mask_i.contiguous().clone().cpu().numpy())
+            cv2.imwrite('vis_output/rad_output/output{}.png'.format(idx), output_i.contiguous().clone().cpu().numpy())
             intersection_i, union_i, _ = intersectionAndUnionGPU(
                 output_i.contiguous().clone(), mask_i.contiguous(), 2, ignore_index=255
             )
@@ -583,6 +619,12 @@ def validate(val_loader, model_engine, epoch, writer, args):
             union += union_i
             acc_iou += intersection_i / (union_i + 1e-5)
             acc_iou[union_i == 0] += 1.0  # no-object target
+            idx += 1
+        # if args.thd_depth != 0:  # 3d input
+        #     bs = masks_list.shape[0] // args.thd_depth
+        # else:
+        #     bs = masks_list.shape[0]
+
         intersection, union = intersection.cpu().numpy(), union.cpu().numpy()
         acc_iou = acc_iou.cpu().numpy() / masks_list.shape[0]
         intersection_meter.update(intersection), union_meter.update(

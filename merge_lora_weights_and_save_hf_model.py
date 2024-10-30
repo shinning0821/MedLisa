@@ -58,11 +58,11 @@ def parse_args(args):
 def main(args):
     args = parse_args(args)
     os.makedirs(args.vis_save_path, exist_ok=True)
-
+    custom_cache_dir = "/mnt/data0/ziyue/cache/huggingface/hub" 
     # Create model
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         args.version,
-        cache_dir=None,
+        cache_dir=custom_cache_dir,
         model_max_length=args.model_max_length,
         padding_side="right",
         use_fast=False,
@@ -89,7 +89,11 @@ def main(args):
     elif args.precision == "fp16":
         torch_dtype = torch.half
     model = LISAForCausalLM.from_pretrained(
-        args.version, torch_dtype=torch_dtype, low_cpu_mem_usage=True, **model_args
+        args.version,
+        cache_dir=custom_cache_dir, 
+        torch_dtype=torch_dtype, 
+        low_cpu_mem_usage=True, 
+        **model_args
     )
     model.config.eos_token_id = tokenizer.eos_token_id
     model.config.bos_token_id = tokenizer.bos_token_id
@@ -113,7 +117,7 @@ def main(args):
                         [
                             x not in name
                             for x in [
-                                "visual_model",
+                                "mask_decoder",
                                 "vision_tower",
                                 "mm_projector",
                                 "text_hidden_fcs",

@@ -11,6 +11,7 @@ def build_vision_tower(vision_tower_cfg, **kwargs):
         vision_tower.startswith("openai")
         or vision_tower.startswith("laion")
         or "clip" in vision_tower
+        or "CLIP" in vision_tower
     ):
         return CLIPVisionTower(vision_tower, args=vision_tower_cfg, **kwargs)
 

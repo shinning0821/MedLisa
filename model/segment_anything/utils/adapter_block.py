@@ -31,7 +31,6 @@ class AdapterBlock(nn.Module):
 
     def __init__(
         self,
-        args,
         dim: int,
         num_heads: int,
         mlp_ratio: float = 4.0,
@@ -60,7 +59,6 @@ class AdapterBlock(nn.Module):
                 positional parameter size.
         """
         super().__init__()
-        self.args = args
         self.norm1 = norm_layer(dim)
         self.attn = Attention(
             dim,
@@ -71,10 +69,7 @@ class AdapterBlock(nn.Module):
             input_size=input_size if window_size == 0 else (window_size, window_size),
         )
 
-        if(args.mid_dim != None):
-            adapter_dim = args.mid_dim
-        else:
-            adapter_dim = dim
+        adapter_dim = dim
 
         self.MLP_Adapter = Adapter(adapter_dim, skip_connect=False)  # MLP-adapter, no skip connection
         self.Space_Adapter = Adapter(adapter_dim)  # with skip connection
@@ -93,27 +88,27 @@ class AdapterBlock(nn.Module):
             x, pad_hw = window_partition(x, self.window_size)
 
          ## 3d branch
-        if self.args.thd or shortcut.shape[0] > 8: 
-            hh, ww = x.shape[1], x.shape[2]
-            if self.args.chunk:
-                depth = self.args.chunk
-            else:
-                depth = x.shape[0]
-            xd = rearrange(x, '(b d) h w c -> (b h w) d c ', d=depth)
-            # xd = rearrange(xd, '(b d) n c -> (b n) d c', d=self.in_chans)
-            xd = self.norm1(xd)
-            dh, _ = closest_numbers(depth)
-            xd = rearrange(xd, 'bhw (dh dw) c -> bhw dh dw c', dh= dh)
-            xd = self.Depth_Adapter(self.attn(xd))
-            xd = rearrange(xd, '(b n) dh dw c ->(b dh dw) n c', n= hh * ww )
+        # if self.args.thd or shortcut.shape[0] > 8: 
+        #     hh, ww = x.shape[1], x.shape[2]
+        #     if self.args.chunk:
+        #         depth = self.args.chunk
+        #     else:
+        #         depth = x.shape[0]
+        #     xd = rearrange(x, '(b d) h w c -> (b h w) d c ', d=depth)
+        #     # xd = rearrange(xd, '(b d) n c -> (b n) d c', d=self.in_chans)
+        #     xd = self.norm1(xd)
+        #     dh, _ = closest_numbers(depth)
+        #     xd = rearrange(xd, 'bhw (dh dw) c -> bhw dh dw c', dh= dh)
+        #     xd = self.Depth_Adapter(self.attn(xd))
+        #     xd = rearrange(xd, '(b n) dh dw c ->(b dh dw) n c', n= hh * ww )
 
         x = self.norm1(x)
         x = self.attn(x)
         x = self.Space_Adapter(x)
 
-        if self.args.thd or shortcut.shape[0] > 8:
-            xd = rearrange(xd, 'b (hh ww) c -> b  hh ww c', hh= hh )
-            x = x + xd
+        # if self.args.thd or shortcut.shape[0] > 8:
+        #     xd = rearrange(xd, 'b (hh ww) c -> b  hh ww c', hh= hh )
+        #     x = x + xd
 
         # Reverse window partition
         if self.window_size > 0:
